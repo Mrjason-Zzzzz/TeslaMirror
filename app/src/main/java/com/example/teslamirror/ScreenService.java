@@ -5,38 +5,36 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
-import android.media.Image;
-import android.media.ImageReader;
+import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
+import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
-import java.io.ByteArrayOutputStream;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
+import android.view.Surface;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import fi.iki.elonen.NanoHTTPD;
 
 public class ScreenService extends Service {
     private MediaProjection mMediaProjection;
-    private ImageReader mImageReader;
+    private MediaCodec mEncoder;
     private VirtualDisplay mVirtualDisplay;
     private MyWebSocketServer mWsServer;
     private MyHttpServer mHttpServer;
     private boolean isRunning = false;
-
-    // 【核心防御：注入异步大后方】创建专用的独立硬件级后台线程与处理器
-    private HandlerThread mBackgroundThread;
-    private Handler mBackgroundHandler;
+    
+    // 工业级防御：在内存中死锁 H.264 初始化配置帧（SPS/PPS 密钥）
+    private byte[] mCodecConfig = null;
 
     public interface StatusListener { void onConnectionChanged(boolean connected); }
     private static StatusListener sListener = null;
@@ -49,7 +47,7 @@ public class ScreenService extends Service {
         createNotificationChannel();
         Notification notification = new Notification.Builder(this, "MirrorChannel")
                 .setContentTitle("车机同步中")
-                .setContentText("采用高稳健图像矩阵传输中...")
+                .setContentText("H.264 全硬件编码极速推流中...")
                 .setSmallIcon(android.R.drawable.ic_media_play).build();
         startForeground(1, notification);
 
@@ -62,71 +60,83 @@ public class ScreenService extends Service {
                 mMediaProjection = projectionManager.getMediaProjection(resultCode, data);
 
                 try {
-                    mWsServer = new MyWebSocketServer(8686);
+                    mWsServer = new MyWebSocketServer(8686, this);
                     mWsServer.start();
                     mHttpServer = new MyHttpServer(8080);
                     mHttpServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
                     
-                    startImageCapture();
+                    setupHardwareEncoder();
                 } catch (Exception e) { e.printStackTrace(); }
             }
         }
         return START_NOT_STICKY;
     }
 
-    private void startImageCapture() {
-        int width = 1024;
-        int height = 576;
-        
-        // 1. 初始化独立后台线程，将高负荷算力彻底剥离主线程
-        mBackgroundThread = new HandlerThread("TeslaMirrorBinder");
-        mBackgroundThread.start();
-        mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
+    private void setupHardwareEncoder() throws IOException {
+        // 1280x720 标准车载宽屏流规格
+        int width = 1280;
+        int height = 720;
 
-        mImageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2);
+        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
+        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000); // 锁定 2Mbps 高清稳健码率
+        format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); // 强制 1 秒一发关键帧
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            format.setInteger(MediaFormat.KEY_LATENCY, 0); 
+        }
+
+        mEncoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+        mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+        
+        // 核心精髓：创建 GPU 直接驱动的硬件 Surface
+        Surface inputSurface = mEncoder.createInputSurface();
+        
+        // 参数彻底对齐：法定的主屏分流标志位 + 健康的 160 DPI 密度
         mVirtualDisplay = mMediaProjection.createVirtualDisplay("TeslaCapture",
                 width, height, 160, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                mImageReader.getSurface(), null, null);
+                inputSurface, null, null);
 
         isRunning = true;
-        
-        // 2. 将监听器死死绑定在后台线程 Handler 上，让压缩和推流在暗处全速狂飙
-        mImageReader.setOnImageAvailableListener(reader -> {
-            if (!isRunning) return;
-            Image image = null;
-            Bitmap bitmap = null;
-            ByteArrayOutputStream baos = null;
-            try {
-                image = reader.acquireLatestImage();
-                if (image != null) {
-                    Image.Plane[] planes = image.getPlanes();
-                    ByteBuffer buffer = planes[0].getBuffer();
-                    int pixelStride = planes[0].getPixelStride();
-                    int rowStride = planes[0].getRowStride();
-                    int rowPadding = rowStride - pixelStride * width;
+        mEncoder.start();
 
-                    // 高效安全重组内存图像尺寸
-                    int bitmapWidth = width + rowPadding / pixelStride;
-                    bitmap = Bitmap.createBitmap(bitmapWidth, height, Bitmap.Config.ARGB_8888);
-                    bitmap.copyPixelsFromBuffer(buffer);
+        // 启动纯净的硬件级抽取线程
+        new Thread(() -> {
+            MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+            while (isRunning) {
+                try {
+                    int outputBufferIndex = mEncoder.dequeueOutputBuffer(bufferInfo, 10000);
+                    if (outputBufferIndex >= 0) {
+                        ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
+                        if (outputBuffer != null && bufferInfo.size > 0) {
+                            
+                            outputBuffer.position(bufferInfo.offset);
+                            outputBuffer.limit(bufferInfo.offset + bufferInfo.size);
+                            
+                            byte[] outData = new byte[bufferInfo.size];
+                            outputBuffer.get(outData);
 
-                    baos = new ByteArrayOutputStream();
-                    // 在后台线程肆无忌惮地进行 JPEG 高清压缩，主线程毫无感知
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos);
-                    byte[] imageBytes = baos.toByteArray();
-
-                    if (mWsServer != null) {
-                        mWsServer.broadcast(imageBytes);
+                            // 拦截 H.264 的 SPS/PPS 配置头
+                            if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                                mCodecConfig = outData;
+                                if (mWsServer != null) {
+                                    mWsServer.broadcast("SERVER_STATUS: H.264 硬件初始化密钥已锁进内存 ✅");
+                                }
+                            } else {
+                                // 常态化视频流二进制切片广播
+                                if (mWsServer != null) {
+                                    mWsServer.broadcast(outData);
+                                }
+                            }
+                        }
+                        mEncoder.releaseOutputBuffer(outputBufferIndex, false);
                     }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-            } finally {
-                if (baos != null) { try { baos.close(); } catch (Exception e) {} }
-                if (bitmap != null) { bitmap.recycle(); }
-                if (image != null) { image.close(); }
             }
-        }, mBackgroundHandler); // ◄◄◄ 终极对齐：改用异步处理器
+        }).start();
     }
 
     private void createNotificationChannel() {
@@ -138,12 +148,25 @@ public class ScreenService extends Service {
     }
 
     private static class MyWebSocketServer extends WebSocketServer {
-        public MyWebSocketServer(int port) { super(new InetSocketAddress(port)); this.setConnectionLostTimeout(0); }
-        @Override public void onOpen(WebSocket conn, ClientHandshake handshake) {
+        private final ScreenService mService;
+
+        public MyWebSocketServer(int port, ScreenService service) { 
+            super(new InetSocketAddress(port)); 
+            this.mService = service;
+            this.setConnectionLostTimeout(0); 
+        }
+
+        @Override 
+        public void onOpen(WebSocket conn, ClientHandshake handshake) {
+            // 破局核心：不管是车机还是 Mac 连入，立刻把缓存在内存里的 H.264 头部密钥拍在他脸上
+            if (mService.mCodecConfig != null) {
+                conn.send(mService.mCodecConfig);
+            }
             if (ScreenService.sListener != null) {
                 new Handler(Looper.getMainLooper()).post(() -> ScreenService.sListener.onConnectionChanged(true));
             }
         }
+
         @Override public void onClose(WebSocket conn, int code, String reason, boolean remote) {
             if (ScreenService.sListener != null) {
                 new Handler(Looper.getMainLooper()).post(() -> ScreenService.sListener.onConnectionChanged(false));
@@ -166,31 +189,38 @@ public class ScreenService extends Service {
                "<html>\n" +
                "<head>\n" +
                "    <meta charset=\"UTF-8\">\n" +
-               "    <title>特斯拉极致稳定图像终端</title>\n" +
+               "    <title>车载大屏极致低延迟同步终端</title>\n" +
+               "    <script src=\"https://cdn.jsdelivr.net/npm/jmuxer@2.0.5/dist/jmuxer.min.js\"></script>\n" +
                "    <style>\n" +
                "        html, body { width: 100%; height: 100%; background: #000; margin: 0; padding: 0; overflow: hidden; }\n" +
                "        .container { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }\n" +
-               "        img { width: 100%; height: 100%; object-fit: contain; }\n" +
+               "        video { width: 100%; height: 100%; object-fit: contain; }\n" +
                "    </style>\n" +
                "</head>\n" +
                "<body>\n" +
                "    <div class=\"container\">\n" +
-               "        <img id=\"screen_view\" src=\"\" />\n" +
+               "        <video id=\"tesla_video\" autoplay muted playsinline></video>\n" +
                "    </div>\n" +
                "    <script>\n" +
-               "        const imgView = document.getElementById('screen_view');\n" +
+               "        console.log('--- H.264 硬件级核心推流系统已在线 ---');\n" +
+               "        const jmuxer = new JMuxer({\n" +
+               "            node: 'tesla_video',\n" +
+               "            mode: 'video',\n" +
+               "            flushingTime: 0,\n" +
+               "            maxDelay: 50\n" +
+               "        });\n" +
                "        const wsUrl = 'ws://' + window.location.hostname + ':8686';\n" +
                "        const ws = new WebSocket(wsUrl);\n" +
                "        ws.binaryType = 'arraybuffer';\n" +
                "        \n" +
                "        ws.onmessage = function(event) {\n" +
-               "            const blob = new Blob([event.data], { type: 'image/jpeg' });\n" +
-               "            const oldUrl = imgView.src;\n" +
-               "            imgView.src = URL.createObjectURL(blob);\n" +
-               "            \n" +
-               "            if (oldUrl && oldUrl.startsWith('blob:')) {\n" +
-               "                URL.revokeObjectURL(oldUrl);\n" +
+               "            if (typeof event.data === 'string') {\n" +
+               "                console.log('📱 手机后台雷达状态回传 -> ' + event.data);\n" +
+               "                return;\n" +
                "            }\n" +
+               "            jmuxer.feed({\n" +
+               "                video: new Uint8Array(event.data)\n" +
+               "            });\n" +
                "        };\n" +
                "    </script>\n" +
                "</body>\n" +
@@ -202,11 +232,8 @@ public class ScreenService extends Service {
         super.onDestroy();
         isRunning = false;
         if (mVirtualDisplay != null) mVirtualDisplay.release();
-        if (mImageReader != null) mImageReader.close();
+        if (mEncoder != null) { try { mEncoder.stop(); } catch (Exception e) {} mEncoder.release(); }
         if (mMediaProjection != null) mMediaProjection.stop();
-        if (mBackgroundThread != null) {
-            mBackgroundThread.quitSafely(); // 安全退出异步大后方
-        }
         if (mWsServer != null) { try { mWsServer.stop(); } catch (Exception e) {} }
         if (mHttpServer != null) mHttpServer.stop();
     }
