@@ -31,6 +31,9 @@ public class ScreenService extends Service {
     private MyHttpServer mHttpServer;
     private boolean isRunning = false;
 
+    // 【核心防御机制】在内存中永久缓存 H.264 的 SPS/PPS 动态密钥
+    private byte[] mCodecConfig = null;
+
     @Override
     public IBinder onBind(Intent intent) { return null; }
 
@@ -59,7 +62,8 @@ public class ScreenService extends Service {
                 mMediaProjection = projectionManager.getMediaProjection(resultCode, data);
 
                 try {
-                    mWsServer = new MyWebSocketServer(8686);
+                    // 传入当前服务实例，让 WebSocket 能够获取到缓存的密钥
+                    mWsServer = new MyWebSocketServer(8686, this);
                     mWsServer.start();
                     mHttpServer = new MyHttpServer(8080);
                     mHttpServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
@@ -77,7 +81,7 @@ public class ScreenService extends Service {
     private void setupEncoder() throws IOException {
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 2500000); 
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 3000000); // 适度提升带宽至 3Mbps，确保大屏画质锐利
         format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); 
         
@@ -104,11 +108,18 @@ public class ScreenService extends Service {
                     if (outputBufferIndex >= 0) {
                         ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
                         if (outputBuffer != null && bufferInfo.size > 0) {
+                            
                             byte[] outData = new byte[bufferInfo.size];
                             outputBuffer.get(outData);
 
-                            if (mWsServer != null) {
-                                mWsServer.broadcast(outData);
+                            // 拦截硬伤：如果当前是配置帧（密钥），锁进内存，不向空白连接广播
+                            if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                                mCodecConfig = outData;
+                            } else {
+                                // 普通视频流正常广播
+                                if (mWsServer != null) {
+                                    mWsServer.broadcast(outData);
+                                }
                             }
                         }
                         mEncoder.releaseOutputBuffer(outputBufferIndex, false);
@@ -132,11 +143,22 @@ public class ScreenService extends Service {
     }
 
     private static class MyWebSocketServer extends WebSocketServer {
-        public MyWebSocketServer(int port) { 
+        private final ScreenService mService;
+
+        public MyWebSocketServer(int port, ScreenService service) { 
             super(new InetSocketAddress(port)); 
+            this.mService = service;
             this.setConnectionLostTimeout(0); 
         }
-        @Override public void onOpen(WebSocket conn, ClientHandshake handshake) {}
+
+        @Override 
+        public void onOpen(WebSocket conn, ClientHandshake handshake) {
+            // 【破局绝杀】只要有车机浏览器连接进来，不管迟到多久，立刻单独将 SPS/PPS 密钥拍在它脸上
+            if (mService.mCodecConfig != null) {
+                conn.send(mService.mCodecConfig);
+            }
+        }
+        
         @Override public void onClose(WebSocket conn, int code, String reason, boolean remote) {}
         @Override public void onMessage(WebSocket conn, String message) {}
         @Override public void onError(WebSocket conn, Exception ex) {}
@@ -167,8 +189,6 @@ public class ScreenService extends Service {
                "            margin: 0;\n" +
                "            padding: 0;\n" +
                "            overflow: hidden;\n" +
-               "            -webkit-user-select: none;\n" +
-               "            user-select: none;\n" +
                "        }\n" +
                "        .player-container {\n" +
                "            width: 100vw;\n" +
@@ -186,14 +206,14 @@ public class ScreenService extends Service {
                "</head>\n" +
                "<body>\n" +
                "    <div class=\"player-container\">\n" +
-               "        <video id=\"tesla_video\" autoplay muted playsinline webkit-playsinline></video>\n" +
+               "        <video id=\"tesla_video\" autoplay muted playsinline></video>\n" +
                "    </div>\n" +
                "    <script>\n" +
                "        const jmuxer = new JMuxer({\n" +
                "            node: 'tesla_video',\n" +
                "            mode: 'video',\n" +
                "            flushingTime: 0,\n" +
-               "            maxDelay: 80\n" +
+               "            maxDelay: 100\n" +
                "        });\n" +
                "        const targetWsUrl = 'ws://' + window.location.hostname + ':8686';\n" +
                "        const ws = new WebSocket(targetWsUrl);\n" +
@@ -202,9 +222,6 @@ public class ScreenService extends Service {
                "            jmuxer.feed({\n" +
                "                video: new Uint8Array(event.data)\n" +
                "            });\n" +
-               "        };\n" +
-               "        ws.onerror = function(e) {\n" +
-               "            console.log('数据链路发生震荡，正在尝试重连...');\n" +
                "        };\n" +
                "    </script>\n" +
                "</body>\n" +
