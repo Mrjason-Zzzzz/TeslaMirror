@@ -86,7 +86,7 @@ public class ScreenService extends Service {
     private void setupEncoder() throws IOException {
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000); // 锁定 2Mbps 高清稳健带宽
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000); 
         format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); 
         
@@ -98,10 +98,9 @@ public class ScreenService extends Service {
         mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         Surface inputSurface = mEncoder.createInputSurface();
         
-        // 【绝杀修正】将屏幕密度由崩塌的 1 DPI 修正为法定的 160 DPI（标准 mdpi 规格）
-        // 彻底复活麒麟 980 硬件图形渲染管线，迫使其源源不断向 Surface 吐出画面
+        // 【核心绝杀点】拒绝空载副屏，强行切入系统主视口物理对齐
         mVirtualDisplay = mMediaProjection.createVirtualDisplay("TeslaCapture",
-                1280, 720, 160, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
+                1280, 720, 160, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 inputSurface, null, null);
 
         isRunning = true;
@@ -109,8 +108,20 @@ public class ScreenService extends Service {
 
         new Thread(() -> {
             MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+            long lastHeartbeat = 0;
+            int internalFrameCount = 0;
+            
             while (isRunning) {
                 try {
+                    // 【全量雷达自检机制】每隔 3 秒向 Mac 浏览器强行发射一次全链路心跳状态，彻底消灭盲区
+                    long now = System.currentTimeMillis();
+                    if (now - lastHeartbeat > 3000) {
+                        lastHeartbeat = now;
+                        if (mWsServer != null) {
+                            mWsServer.broadcast("SERVER_HEARTBEAT: 编码核心线程存活状态 = " + isRunning + " | 密钥帧缓存 = " + (mCodecConfig != null) + " | 手机端已编码总帧数 = " + internalFrameCount);
+                        }
+                    }
+
                     int outputBufferIndex = mEncoder.dequeueOutputBuffer(bufferInfo, 10000);
                     if (outputBufferIndex >= 0) {
                         ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
@@ -124,19 +135,27 @@ public class ScreenService extends Service {
 
                             if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
                                 mCodecConfig = outData;
-                            } else {
                                 if (mWsServer != null) {
-                                    try {
-                                        mWsServer.broadcast(outData);
-                                    } catch (Exception wsEx) {
-                                        wsEx.printStackTrace();
-                                    }
+                                    mWsServer.broadcast("SERVER_STATUS: H.264 密钥帧(SPS/PPS)已成功捕获并锁进内存。");
                                 }
+                            }
+                            
+                            // 广播核心视频流二进制切片
+                            if (mWsServer != null) {
+                                mWsServer.broadcast(outData);
+                                internalFrameCount++;
                             }
                         }
                         mEncoder.releaseOutputBuffer(outputBufferIndex, false);
+                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        if (mWsServer != null) {
+                            mWsServer.broadcast("SERVER_STATUS: 硬件编码器输出规格发生法定改变 -> " + mEncoder.getOutputFormat().toString());
+                        }
                     }
                 } catch (Exception e) {
+                    if (mWsServer != null) {
+                        mWsServer.broadcast("SERVER_ERROR: 编码循环体内耗崩溃 -> " + e.getMessage());
+                    }
                     e.printStackTrace();
                 }
             }
@@ -246,6 +265,11 @@ public class ScreenService extends Service {
                "            console.log('✅ 数据管道握手成功！WebSocket 状态已死锁锁死。');\n" +
                "        };\n" +
                "        ws.onmessage = function(event) {\n" +
+               "            // 雷达监测：如果是手机端发过来的文本诊断状态日志，直接在控制台高亮亮起\n" +
+               "            if (typeof event.data === 'string') {\n" +
+               "                console.log('📱 手机端底层实时回传状态 -> ', event.data);\n" +
+               "                return;\n" +
+               "            }\n" +
                "            frameCount++;\n" +
                "            const bytes = new Uint8Array(event.data);\n" +
                "            if (frameCount % 30 === 0) {\n" +
