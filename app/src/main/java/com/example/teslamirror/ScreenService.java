@@ -5,59 +5,48 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
-import android.media.MediaCodec;
-import android.media.MediaCodecInfo;
-import android.media.MediaFormat;
+import android.media.Image;
+import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.view.Surface;
+import java.io.ByteArrayOutputStream;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import fi.iki.elonen.NanoHTTPD;
 
 public class ScreenService extends Service {
     private MediaProjection mMediaProjection;
-    private MediaCodec mEncoder;
+    private ImageReader mImageReader;
     private VirtualDisplay mVirtualDisplay;
     private MyWebSocketServer mWsServer;
     private MyHttpServer mHttpServer;
     private boolean isRunning = false;
-    private byte[] mCodecConfig = null;
 
-    public interface StatusListener {
-        void onConnectionChanged(boolean connected);
-    }
+    public interface StatusListener { void onConnectionChanged(boolean connected); }
     private static StatusListener sListener = null;
     public static void setStatusListener(StatusListener listener) { sListener = listener; }
 
-    @Override
-    public IBinder onBind(Intent intent) { return null; }
+    @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         createNotificationChannel();
-        
         Notification notification = new Notification.Builder(this, "MirrorChannel")
                 .setContentTitle("车机同步中")
-                .setContentText("正在将手机画面无延迟传输至车机...")
-                .setSmallIcon(android.R.drawable.ic_media_play)
-                .build();
-                
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
-        } else {
-            startForeground(1, notification);
-        }
+                .setContentText("采用高稳健图像矩阵传输中...")
+                .setSmallIcon(android.R.drawable.ic_media_play).build();
+        startForeground(1, notification);
 
         if (intent != null) {
             int resultCode = intent.getIntExtra("RESULT_CODE", 0);
@@ -68,137 +57,90 @@ public class ScreenService extends Service {
                 mMediaProjection = projectionManager.getMediaProjection(resultCode, data);
 
                 try {
-                    mWsServer = new MyWebSocketServer(8686, this);
+                    mWsServer = new MyWebSocketServer(8686);
                     mWsServer.start();
                     mHttpServer = new MyHttpServer(8080);
                     mHttpServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
                     
-                    setupEncoder();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
+                    startImageCapture();
+                } catch (Exception e) { e.printStackTrace(); }
             }
         }
-
         return START_NOT_STICKY;
     }
 
-    private void setupEncoder() throws IOException {
-        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720);
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000); 
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); 
+    private void startImageCapture() {
+        // 设定高兼容性投屏分辨率 1024x576 (16:9)，兼顾画质与局域网传输吞吐量
+        int width = 1024;
+        int height = 576;
         
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            format.setInteger(MediaFormat.KEY_LATENCY, 0); 
-        }
-
-        mEncoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
-        mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        Surface inputSurface = mEncoder.createInputSurface();
-        
-        // 【核心绝杀点】拒绝空载副屏，强行切入系统主视口物理对齐
+        // 创建安卓法定的图像读取器，最大缓存 2 帧，确保绝对低延迟
+        mImageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2);
         mVirtualDisplay = mMediaProjection.createVirtualDisplay("TeslaCapture",
-                1280, 720, 160, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                inputSurface, null, null);
+                width, height, 160, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                mImageReader.getSurface(), null, null);
 
         isRunning = true;
-        mEncoder.start();
+        
+        // 挂载高频帧提取拦截器
+        mImageReader.setOnImageAvailableListener(reader -> {
+            if (!isRunning) return;
+            Image image = null;
+            Bitmap bitmap = null;
+            ByteArrayOutputStream baos = null;
+            try {
+                image = reader.acquireLatestImage();
+                if (image != null) {
+                    Image.Plane[] planes = image.getPlanes();
+                    ByteBuffer buffer = planes[0].getBuffer();
+                    int pixelStride = planes[0].getPixelStride();
+                    int rowStride = planes[0].getRowStride();
+                    int rowPadding = rowStride - pixelStride * width;
 
-        new Thread(() -> {
-            MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
-            long lastHeartbeat = 0;
-            int internalFrameCount = 0;
-            
-            while (isRunning) {
-                try {
-                    // 【全量雷达自检机制】每隔 3 秒向 Mac 浏览器强行发射一次全链路心跳状态，彻底消灭盲区
-                    long now = System.currentTimeMillis();
-                    if (now - lastHeartbeat > 3000) {
-                        lastHeartbeat = now;
-                        if (mWsServer != null) {
-                            mWsServer.broadcast("SERVER_HEARTBEAT: 编码核心线程存活状态 = " + isRunning + " | 密钥帧缓存 = " + (mCodecConfig != null) + " | 手机端已编码总帧数 = " + internalFrameCount);
-                        }
-                    }
+                    // 将原始内存图像重组为 Bitmap
+                    bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888);
+                    bitmap.copyPixelsFromBuffer(buffer);
 
-                    int outputBufferIndex = mEncoder.dequeueOutputBuffer(bufferInfo, 10000);
-                    if (outputBufferIndex >= 0) {
-                        ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
-                        if (outputBuffer != null && bufferInfo.size > 0) {
-                            
-                            outputBuffer.position(bufferInfo.offset);
-                            outputBuffer.limit(bufferInfo.offset + bufferInfo.size);
-                            
-                            byte[] outData = new byte[bufferInfo.size];
-                            outputBuffer.get(outData);
+                    // 核心降维打击：在内存中以 75% 的压缩率直接压成高兼容性 JPEG 二进制流
+                    baos = new ByteArrayOutputStream();
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 75, baos);
+                    byte[] imageBytes = baos.toByteArray();
 
-                            if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                                mCodecConfig = outData;
-                                if (mWsServer != null) {
-                                    mWsServer.broadcast("SERVER_STATUS: H.264 密钥帧(SPS/PPS)已成功捕获并锁进内存。");
-                                }
-                            }
-                            
-                            // 广播核心视频流二进制切片
-                            if (mWsServer != null) {
-                                mWsServer.broadcast(outData);
-                                internalFrameCount++;
-                            }
-                        }
-                        mEncoder.releaseOutputBuffer(outputBufferIndex, false);
-                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        if (mWsServer != null) {
-                            mWsServer.broadcast("SERVER_STATUS: 硬件编码器输出规格发生法定改变 -> " + mEncoder.getOutputFormat().toString());
-                        }
-                    }
-                } catch (Exception e) {
+                    // 通过 WebSocket 管道无阻碍喷射出去
                     if (mWsServer != null) {
-                        mWsServer.broadcast("SERVER_ERROR: 编码循环体内耗崩溃 -> " + e.getMessage());
+                        mWsServer.broadcast(imageBytes);
                     }
-                    e.printStackTrace();
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                if (baos != null) { try { baos.close(); } catch (Exception e) {} }
+                if (bitmap != null) { bitmap.recycle(); }
+                if (image != null) { image.close(); }
             }
-        }).start();
+        }, new Handler(Looper.getMainLooper()));
     }
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel serviceChannel = new NotificationChannel("MirrorChannel",
                     "Mirror Service", NotificationManager.IMPORTANCE_DEFAULT);
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                manager.createNotificationChannel(serviceChannel);
-            }
+            ((NotificationManager) getSystemService(NotificationManager.class)).createNotificationChannel(serviceChannel);
         }
     }
 
     private static class MyWebSocketServer extends WebSocketServer {
-        private final ScreenService mService;
-
-        public MyWebSocketServer(int port, ScreenService service) { 
-            super(new InetSocketAddress(port)); 
-            this.mService = service;
-            this.setConnectionLostTimeout(0); 
-        }
-
-        @Override 
-        public void onOpen(WebSocket conn, ClientHandshake handshake) {
-            if (mService.mCodecConfig != null) {
-                conn.send(mService.mCodecConfig);
-            }
+        public MyWebSocketServer(int port) { super(new InetSocketAddress(port)); this.setConnectionLostTimeout(0); }
+        @Override public void onOpen(WebSocket conn, ClientHandshake handshake) {
             if (ScreenService.sListener != null) {
                 new Handler(Looper.getMainLooper()).post(() -> ScreenService.sListener.onConnectionChanged(true));
             }
         }
-
-        @Override 
-        public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+        @Override public void onClose(WebSocket conn, int code, String reason, boolean remote) {
             if (ScreenService.sListener != null) {
                 new Handler(Looper.getMainLooper()).post(() -> ScreenService.sListener.onConnectionChanged(false));
             }
         }
-        
         @Override public void onMessage(WebSocket conn, String message) {}
         @Override public void onError(WebSocket conn, Exception ex) {}
         @Override public void onStart() {}
@@ -206,91 +148,43 @@ public class ScreenService extends Service {
 
     private class MyHttpServer extends NanoHTTPD {
         public MyHttpServer(int port) { super(port); }
-        @Override
-        public Response serve(IHTTPSession session) {
-            String html = ScreenService.this.getHtmlSource();
-            return newFixedLengthResponse(Response.Status.OK, "text/html", html);
+        @Override public Response serve(IHTTPSession session) {
+            return newFixedLengthResponse(Response.Status.OK, "text/html", ScreenService.this.getHtmlSource());
         }
     }
 
     private String getHtmlSource() {
         return "<!DOCTYPE html>\n" +
-               "<html lang=\"zh-CN\">\n" +
+               "<html>\n" +
                "<head>\n" +
                "    <meta charset=\"UTF-8\">\n" +
-               "    <title>车载大屏极致低延迟同步终端-硬核调试版</title>\n" +
-               "    <script src=\"https://cdn.jsdelivr.net/npm/jmuxer@2.0.5/dist/jmuxer.min.js\"></script>\n" +
+               "    <title>特斯拉极致稳定图像终端</title>\n" +
                "    <style>\n" +
-               "        html, body {\n" +
-               "            width: 100%;\n" +
-               "            height: 100%;\n" +
-               "            background: #000;\n" +
-               "            margin: 0;\n" +
-               "            padding: 0;\n" +
-               "            overflow: hidden;\n" +
-               "        }\n" +
-               "        .player-container {\n" +
-               "            width: 100vw;\n" +
-               "            height: 100vh;\n" +
-               "            display: flex;\n" +
-               "            align-items: center;\n" +
-               "            justify-content: center;\n" +
-               "        }\n" +
-               "        video {\n" +
-               "            width: 100%;\n" +
-               "            height: 100%;\n" +
-               "            object-fit: contain;\n" +
-               "        }\n" +
+               "        html, body { width: 100%; height: 100%; background: #000; margin: 0; padding: 0; overflow: hidden; }\n" +
+               "        .container { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }\n" +
+               "        img { width: 100%; height: 100%; object-fit: contain; }\n" +
                "    </style>\n" +
                "</head>\n" +
                "<body>\n" +
-               "    <div class=\"player-container\">\n" +
-               "        <video id=\"tesla_video\" autoplay muted playsinline></video>\n" +
+               "    <div class=\"container\">\n" +
+               "        \n" +
+               "        <img id=\"screen_view\" src=\"\" />\n" +
                "    </div>\n" +
                "    <script>\n" +
-               "        console.log('--- 极客推流前端监控系统已在线 ---');\n" +
-               "        const jmuxer = new JMuxer({\n" +
-               "            node: 'tesla_video',\n" +
-               "            mode: 'video',\n" +
-               "            flushingTime: 0,\n" +
-               "            maxDelay: 100,\n" +
-               "            debug: true\n" +
-               "        });\n" +
-               "        const targetWsUrl = 'ws://' + window.location.hostname + ':8686';\n" +
-               "        console.log('正在尝试挂载底层数据管道，目标地址:', targetWsUrl);\n" +
-               "        const ws = new WebSocket(targetWsUrl);\n" +
+               "        const imgView = document.getElementById('screen_view');\n" +
+               "        const wsUrl = 'ws://' + window.location.hostname + ':8686';\n" +
+               "        const ws = new WebSocket(wsUrl);\n" +
                "        ws.binaryType = 'arraybuffer';\n" +
-               "        let frameCount = 0;\n" +
-               "        ws.onopen = function() {\n" +
-               "            console.log('✅ 数据管道握手成功！WebSocket 状态已死锁锁死。');\n" +
-               "        };\n" +
+               "        \n" +
                "        ws.onmessage = function(event) {\n" +
-               "            // 雷达监测：如果是手机端发过来的文本诊断状态日志，直接在控制台高亮亮起\n" +
-               "            if (typeof event.data === 'string') {\n" +
-               "                console.log('📱 手机端底层实时回传状态 -> ', event.data);\n" +
-               "                return;\n" +
-               "            }\n" +
-               "            frameCount++;\n" +
-               "            const bytes = new Uint8Array(event.data);\n" +
-               "            if (frameCount % 30 === 0) {\n" +
-               "                console.log('📡 正在常态化接收视频流 | 已累计接收帧数: ' + frameCount + ' | 当前切片体积: ' + bytes.byteLength + ' 字节');\n" +
-               "            }\n" +
-               "            if (bytes.byteLength === 0) {\n" +
-               "                console.warn('⚠️ 警告：收到空的数据切片！');\n" +
-               "                return;\n" +
-               "            }\n" +
-               "            jmuxer.feed({\n" +
-               "                video: bytes\n" +
-               "            });\n" +
-               "        };\n" +
-               "        ws.onerror = function(error) {\n" +
-               "            console.error('❌ 链路发生灾难性震荡，WebSocket 报错:', error);\n" +
-               "        };\n" +
-               "        ws.onclose = function(e) {\n" +
-               "            console.log('❌ 数据管道已被断开。原因码:', e.code, '原因描述:', e.reason);\n" +
-               "            if (e.code === 1006) {\n" +
-               "                console.log('🔄 检测到 1006 异常断开，激活热重启自愈雷达，2秒后自动刷新网页...');\n" +
-               "                setTimeout(function() { window.location.reload(); }, 2000);\n" +
+               "            // 强转二进制切片，用最底层的 URL.createObjectURL 替换低效的 Base64，榨干浏览器渲染速度\n" +
+               "            const blob = new Blob([event.data], { type: 'image/jpeg' });\n" +
+               "            const oldUrl = imgView.src;\n" +
+               "            imgView.src = URL.createObjectURL(blob);\n" +
+               "            \n" +
+               "            // 阅后即焚，瞬间释放内存，防止车机浏览器内存泄漏引发死机\n" +
+               "            if (oldUrl && oldUrl.startsWith('blob:')) {\n" +
+               "                URL.revokeObjectURL(oldUrl);\n" +
                "            }\n" +
                "        };\n" +
                "    </script>\n" +
@@ -302,11 +196,8 @@ public class ScreenService extends Service {
     public void onDestroy() {
         super.onDestroy();
         isRunning = false;
-        if (mEncoder != null) { 
-            try { mEncoder.stop(); } catch (Exception e) {}
-            mEncoder.release(); 
-        }
         if (mVirtualDisplay != null) mVirtualDisplay.release();
+        if (mImageReader != null) mImageReader.close();
         if (mMediaProjection != null) mMediaProjection.stop();
         if (mWsServer != null) { try { mWsServer.stop(); } catch (Exception e) {} }
         if (mHttpServer != null) mHttpServer.stop();
