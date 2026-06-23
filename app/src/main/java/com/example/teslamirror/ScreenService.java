@@ -32,8 +32,6 @@ public class ScreenService extends Service {
     private MyWebSocketServer mWsServer;
     private MyHttpServer mHttpServer;
     private boolean isRunning = false;
-    
-    // 工业级防御：在内存中死锁 H.264 初始化配置帧（SPS/PPS 密钥）
     private byte[] mCodecConfig = null;
 
     public interface StatusListener { void onConnectionChanged(boolean connected); }
@@ -73,15 +71,14 @@ public class ScreenService extends Service {
     }
 
     private void setupHardwareEncoder() throws IOException {
-        // 1280x720 标准车载宽屏流规格
         int width = 1280;
         int height = 720;
 
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000); // 锁定 2Mbps 高清稳健码率
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000); 
         format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); // 强制 1 秒一发关键帧
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); 
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             format.setInteger(MediaFormat.KEY_LATENCY, 0); 
@@ -89,11 +86,8 @@ public class ScreenService extends Service {
 
         mEncoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
         mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        
-        // 核心精髓：创建 GPU 直接驱动的硬件 Surface
         Surface inputSurface = mEncoder.createInputSurface();
         
-        // 参数彻底对齐：法定的主屏分流标志位 + 健康的 160 DPI 密度
         mVirtualDisplay = mMediaProjection.createVirtualDisplay("TeslaCapture",
                 width, height, 160, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 inputSurface, null, null);
@@ -101,7 +95,6 @@ public class ScreenService extends Service {
         isRunning = true;
         mEncoder.start();
 
-        // 启动纯净的硬件级抽取线程
         new Thread(() -> {
             MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
             while (isRunning) {
@@ -117,14 +110,9 @@ public class ScreenService extends Service {
                             byte[] outData = new byte[bufferInfo.size];
                             outputBuffer.get(outData);
 
-                            // 拦截 H.264 的 SPS/PPS 配置头
                             if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
                                 mCodecConfig = outData;
-                                if (mWsServer != null) {
-                                    mWsServer.broadcast("SERVER_STATUS: H.264 硬件初始化密钥已锁进内存 ✅");
-                                }
                             } else {
-                                // 常态化视频流二进制切片广播
                                 if (mWsServer != null) {
                                     mWsServer.broadcast(outData);
                                 }
@@ -158,7 +146,6 @@ public class ScreenService extends Service {
 
         @Override 
         public void onOpen(WebSocket conn, ClientHandshake handshake) {
-            // 破局核心：不管是车机还是 Mac 连入，立刻把缓存在内存里的 H.264 头部密钥拍在他脸上
             if (mService.mCodecConfig != null) {
                 conn.send(mService.mCodecConfig);
             }
@@ -202,26 +189,41 @@ public class ScreenService extends Service {
                "        <video id=\"tesla_video\" autoplay muted playsinline></video>\n" +
                "    </div>\n" +
                "    <script>\n" +
-               "        console.log('--- H.264 硬件级核心推流系统已在线 ---');\n" +
+               "        console.log('--- 极客 H.264 推流雷达已就位 ---');\n" +
+               "        const videoEl = document.getElementById('tesla_video');\n" +
+               "        \n" +
                "        const jmuxer = new JMuxer({\n" +
                "            node: 'tesla_video',\n" +
                "            mode: 'video',\n" +
-               "            flushingTime: 0,\n" +
-               "            maxDelay: 50\n" +
+               "            flushingTime: 10, // ◄◄◄ 【核心纠偏】给浏览器 10ms 最优物理对齐缓冲，激活解码器\n" +
+               "            maxDelay: 50,\n" +
+               "            debug: true\n" +
                "        });\n" +
                "        const wsUrl = 'ws://' + window.location.hostname + ':8686';\n" +
                "        const ws = new WebSocket(wsUrl);\n" +
                "        ws.binaryType = 'arraybuffer';\n" +
                "        \n" +
+               "        let frameCount = 0;\n" +
                "        ws.onmessage = function(event) {\n" +
-               "            if (typeof event.data === 'string') {\n" +
-               "                console.log('📱 手机后台雷达状态回传 -> ' + event.data);\n" +
-               "                return;\n" +
+               "            frameCount++;\n" +
+               "            if (frameCount % 30 === 0) {\n" +
+               "                console.log('📡 正在持续向底层渲染内核灌入二进制视频帧，已累计: ' + frameCount + ' 帧');\n" +
                "            }\n" +
+               "            \n" +
+               "            // 持续向播放内核喂流\n" +
                "            jmuxer.feed({\n" +
                "                video: new Uint8Array(event.data)\n" +
                "            });\n" +
+               "            \n" +
+               "            // ◄◄◄ 【核心绝杀】强行击穿车机/Chrome浏览器的自动播放安全锁，只要断流或暂缓就高频强行点火\n" +
+               "            if (videoEl.paused) {\n" +
+               "                videoEl.play().catch(function(e) {\n" +
+               "                    console.log('视口锁死中，等待首次物理点击激活渲染...', e);\n" +
+               "                });\n" +
+               "            }\n" +
                "        };\n" +
+               "        ws.onopen = function() { console.log('✅ 数据链路握手成功'); };\n" +
+               "        ws.onclose = function() { console.log('❌ 数据链路断开'); };\n" +
                "    </script>\n" +
                "</body>\n" +
                "</html>";
