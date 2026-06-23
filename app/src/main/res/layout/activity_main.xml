@@ -7,6 +7,16 @@
     android:padding="16dp">
 
     <TextView
+        android:id="@+id/status_tv"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="● 状态：等待车机连接..."
+        android:textColor="#FF9800"
+        android:textSize="16sp"
+        android:layout_marginBottom="12dp"
+        android:textStyle="bold" />
+
+    <TextView
         android:id="@+id/ip_tv"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
