@@ -1,198 +1,9 @@
-package com.example.teslamirror;
-
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.Service;
-import android.content.Intent;
-import android.hardware.display.DisplayManager;
-import android.hardware.display.VirtualDisplay;
-import android.media.MediaCodec;
-import android.media.MediaCodecInfo;
-import android.media.MediaFormat;
-import android.media.projection.MediaProjection;
-import android.media.projection.MediaProjectionManager;
-import android.os.Build;
-import android.os.Handler;
-import android.os.IBinder;
-import android.os.Looper;
-import android.view.Surface;
-import org.java_websocket.WebSocket;
-import org.java_websocket.handshake.ClientHandshake;
-import org.java_websocket.server.WebSocketServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import fi.iki.elonen.NanoHTTPD;
-
-public class ScreenService extends Service {
-    private MediaProjection mMediaProjection;
-    private MediaCodec mEncoder;
-    private VirtualDisplay mVirtualDisplay;
-    private MyWebSocketServer mWsServer;
-    private MyHttpServer mHttpServer;
-    private boolean isRunning = false;
-    private byte[] mCodecConfig = null;
-
-    // 定制高响应级别状态回调接口
-    public interface StatusListener {
-        void onConnectionChanged(boolean connected);
-    }
-    private static StatusListener sListener = null;
-    public static void setStatusListener(StatusListener listener) { sListener = listener; }
-
-    @Override
-    public IBinder onBind(Intent intent) { return null; }
-
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        createNotificationChannel();
-        
-        Notification notification = new Notification.Builder(this, "MirrorChannel")
-                .setContentTitle("车机同步中")
-                .setContentText("正在将手机画面无延迟传输至车机...")
-                .setSmallIcon(android.R.drawable.ic_media_play)
-                .build();
-                
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
-        } else {
-            startForeground(1, notification);
-        }
-
-        if (intent != null) {
-            int resultCode = intent.getIntExtra("RESULT_CODE", 0);
-            Intent data = (Intent) intent.getParcelableExtra("DATA");
-
-            if (data != null) {
-                MediaProjectionManager projectionManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-                mMediaProjection = projectionManager.getMediaProjection(resultCode, data);
-
-                try {
-                    mWsServer = new MyWebSocketServer(8686, this);
-                    mWsServer.start();
-                    mHttpServer = new MyHttpServer(8080);
-                    mHttpServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
-                    
-                    setupEncoder();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-
-        return START_NOT_STICKY;
-    }
-
-    private void setupEncoder() throws IOException {
-        MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720);
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 3000000); 
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); 
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            format.setInteger(MediaFormat.KEY_LATENCY, 0); 
-        }
-
-        mEncoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
-        mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        Surface inputSurface = mEncoder.createInputSurface();
-        
-        mVirtualDisplay = mMediaProjection.createVirtualDisplay("TeslaCapture",
-                1280, 720, 1, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
-                inputSurface, null, null);
-
-        isRunning = true;
-        mEncoder.start();
-
-        new Thread(() -> {
-            MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
-            while (isRunning) {
-                try {
-                    int outputBufferIndex = mEncoder.dequeueOutputBuffer(bufferInfo, 10000);
-                    if (outputBufferIndex >= 0) {
-                        ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
-                        if (outputBuffer != null && bufferInfo.size > 0) {
-                            byte[] outData = new byte[bufferInfo.size];
-                            outputBuffer.get(outData);
-
-                            if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                                mCodecConfig = outData;
-                            } else {
-                                if (mWsServer != null) {
-                                    mWsServer.broadcast(outData);
-                                }
-                            }
-                        }
-                        mEncoder.releaseOutputBuffer(outputBufferIndex, false);
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        }).start();
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel serviceChannel = new NotificationChannel("MirrorChannel",
-                    "Mirror Service", NotificationManager.IMPORTANCE_DEFAULT);
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                manager.createNotificationChannel(serviceChannel);
-            }
-        }
-    }
-
-    private static class MyWebSocketServer extends WebSocketServer {
-        private final ScreenService mService;
-
-        public MyWebSocketServer(int port, ScreenService service) { 
-            super(new InetSocketAddress(port)); 
-            this.mService = service;
-            this.setConnectionLostTimeout(0); 
-        }
-
-        @Override 
-        public void onOpen(WebSocket conn, ClientHandshake handshake) {
-            if (mService.mCodecConfig != null) {
-                conn.send(mService.mCodecConfig);
-            }
-            // 【UI 反馈点一】强推状态至主线程，手机屏幕瞬间亮起绿色对勾
-            if (ScreenService.sListener != null) {
-                new Handler(Looper.getMainLooper()).post(() -> ScreenService.sListener.onConnectionChanged(true));
-            }
-        }
-
-        @Override 
-        public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-            // 【UI 反馈点二】车机断开或网页关闭，手机屏幕瞬间切回红色告警
-            if (ScreenService.sListener != null) {
-                new Handler(Looper.getMainLooper()).post(() -> ScreenService.sListener.onConnectionChanged(false));
-            }
-        }
-        
-        @Override public void onMessage(WebSocket conn, String message) {}
-        @Override public void onError(WebSocket conn, Exception ex) {}
-        @Override public void onStart() {}
-    }
-
-    private class MyHttpServer extends NanoHTTPD {
-        public MyHttpServer(int port) { super(port); }
-        @Override
-        public Response serve(IHTTPSession session) {
-            String html = ScreenService.this.getHtmlSource();
-            return newFixedLengthResponse(Response.Status.OK, "text/html", html);
-        }
-    }
-
     private String getHtmlSource() {
         return "<!DOCTYPE html>\n" +
                "<html lang=\"zh-CN\">\n" +
                "<head>\n" +
                "    <meta charset=\"UTF-8\">\n" +
-               "    <title>车载大屏极致低延迟同步终端</title>\n" +
+               "    <title>车载大屏极致低延迟同步终端-硬核调试版</title>\n" +
                "    <script src=\"https://cdn.jsdelivr.net/npm/jmuxer@2.0.5/dist/jmuxer.min.js\"></script>\n" +
                "    <style>\n" +
                "        html, body {\n" +
@@ -222,36 +33,57 @@ public class ScreenService extends Service {
                "        <video id=\"tesla_video\" autoplay muted playsinline></video>\n" +
                "    </div>\n" +
                "    <script>\n" +
+               "        console.log('--- 极客推流前端监控系统已在线 ---');\n" +
+               "        \n" +
+               "        // 强制开启 JMuxer 内部 Debug 模式，强迫它吐出所有微观解码日志\n" +
                "        const jmuxer = new JMuxer({\n" +
                "            node: 'tesla_video',\n" +
                "            mode: 'video',\n" +
                "            flushingTime: 0,\n" +
-               "            maxDelay: 100\n" +
+               "            maxDelay: 100,\n" +
+               "            debug: true\n" +
                "        });\n" +
+               "\n" +
                "        const targetWsUrl = 'ws://' + window.location.hostname + ':8686';\n" +
+               "        console.log('正在尝试挂载底层数据管道，目标地址:', targetWsUrl);\n" +
+               "        \n" +
                "        const ws = new WebSocket(targetWsUrl);\n" +
                "        ws.binaryType = 'arraybuffer';\n" +
+               "        \n" +
+               "        let frameCount = 0;\n" +
+               "\n" +
+               "        ws.onopen = function() {\n" +
+               "            console.log('✅ 数据管道握手成功！WebSocket 状态已死锁锁死。');\n" +
+               "        };\n" +
+               "\n" +
                "        ws.onmessage = function(event) {\n" +
+               "            frameCount++;\n" +
+               "            const bytes = new Uint8Array(event.data);\n" +
+               "            \n" +
+               "            // 每隔 30 帧在控制台打印一次数据统计，防止高频刷屏卡死浏览器\n" +
+               "            if (frameCount % 30 === 0) {\n" +
+               "                console.log(`📡 正在常态化接收视频流 | 已累计接收帧数: ${frameCount} | 当前切片体积: ${bytes.byteLength} 字节`);\n" +
+               "            }\n" +
+               "            \n" +
+               "            // 拦截核心：如果收到的是空数据，直接预警\n" +
+               "            if (bytes.byteLength === 0) {\n" +
+               "                console.warn('⚠️ 警告：收到空的数据切片！');\n" +
+               "                return;\n" +
+               "            }\n" +
+               "\n" +
                "            jmuxer.feed({\n" +
-               "                video: new Uint8Array(event.data)\n" +
+               "                video: bytes\n" +
                "            });\n" +
+               "        };\n" +
+               "\n" +
+               "        ws.onerror = function(error) {\n" +
+               "            console.error('❌ 链路发生灾难性震荡，WebSocket 报错:', error);\n" +
+               "        };\n" +
+               "\n" +
+               "        ws.onclose = function(e) {\n" +
+               "            console.log('❌ 数据管道已被断开。原因码:', e.code, '原因描述:', e.reason);\n" +
                "        };\n" +
                "    </script>\n" +
                "</body>\n" +
                "</html>";
     }
-
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        isRunning = false;
-        if (mEncoder != null) { 
-            try { mEncoder.stop(); } catch (Exception e) {}
-            mEncoder.release(); 
-        }
-        if (mVirtualDisplay != null) mVirtualDisplay.release();
-        if (mMediaProjection != null) mMediaProjection.stop();
-        if (mWsServer != null) { try { mWsServer.stop(); } catch (Exception e) {} }
-        if (mHttpServer != null) mHttpServer.stop();
-    }
-}
