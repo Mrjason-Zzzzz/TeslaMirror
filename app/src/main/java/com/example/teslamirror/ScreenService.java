@@ -15,6 +15,7 @@ import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
 import java.io.ByteArrayOutputStream;
@@ -32,6 +33,10 @@ public class ScreenService extends Service {
     private MyWebSocketServer mWsServer;
     private MyHttpServer mHttpServer;
     private boolean isRunning = false;
+
+    // 【核心防御：注入异步大后方】创建专用的独立硬件级后台线程与处理器
+    private HandlerThread mBackgroundThread;
+    private Handler mBackgroundHandler;
 
     public interface StatusListener { void onConnectionChanged(boolean connected); }
     private static StatusListener sListener = null;
@@ -70,11 +75,14 @@ public class ScreenService extends Service {
     }
 
     private void startImageCapture() {
-        // 设定高兼容性投屏分辨率 1024x576 (16:9)，兼顾画质与局域网传输吞吐量
         int width = 1024;
         int height = 576;
         
-        // 创建安卓法定的图像读取器，最大缓存 2 帧，确保绝对低延迟
+        // 1. 初始化独立后台线程，将高负荷算力彻底剥离主线程
+        mBackgroundThread = new HandlerThread("TeslaMirrorBinder");
+        mBackgroundThread.start();
+        mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
+
         mImageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2);
         mVirtualDisplay = mMediaProjection.createVirtualDisplay("TeslaCapture",
                 width, height, 160, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
@@ -82,7 +90,7 @@ public class ScreenService extends Service {
 
         isRunning = true;
         
-        // 挂载高频帧提取拦截器
+        // 2. 将监听器死死绑定在后台线程 Handler 上，让压缩和推流在暗处全速狂飙
         mImageReader.setOnImageAvailableListener(reader -> {
             if (!isRunning) return;
             Image image = null;
@@ -97,16 +105,16 @@ public class ScreenService extends Service {
                     int rowStride = planes[0].getRowStride();
                     int rowPadding = rowStride - pixelStride * width;
 
-                    // 将原始内存图像重组为 Bitmap
-                    bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888);
+                    // 高效安全重组内存图像尺寸
+                    int bitmapWidth = width + rowPadding / pixelStride;
+                    bitmap = Bitmap.createBitmap(bitmapWidth, height, Bitmap.Config.ARGB_8888);
                     bitmap.copyPixelsFromBuffer(buffer);
 
-                    // 核心降维打击：在内存中以 75% 的压缩率直接压成高兼容性 JPEG 二进制流
                     baos = new ByteArrayOutputStream();
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 75, baos);
+                    // 在后台线程肆无忌惮地进行 JPEG 高清压缩，主线程毫无感知
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos);
                     byte[] imageBytes = baos.toByteArray();
 
-                    // 通过 WebSocket 管道无阻碍喷射出去
                     if (mWsServer != null) {
                         mWsServer.broadcast(imageBytes);
                     }
@@ -118,7 +126,7 @@ public class ScreenService extends Service {
                 if (bitmap != null) { bitmap.recycle(); }
                 if (image != null) { image.close(); }
             }
-        }, new Handler(Looper.getMainLooper()));
+        }, mBackgroundHandler); // ◄◄◄ 终极对齐：改用异步处理器
     }
 
     private void createNotificationChannel() {
@@ -167,7 +175,6 @@ public class ScreenService extends Service {
                "</head>\n" +
                "<body>\n" +
                "    <div class=\"container\">\n" +
-               "        \n" +
                "        <img id=\"screen_view\" src=\"\" />\n" +
                "    </div>\n" +
                "    <script>\n" +
@@ -177,12 +184,10 @@ public class ScreenService extends Service {
                "        ws.binaryType = 'arraybuffer';\n" +
                "        \n" +
                "        ws.onmessage = function(event) {\n" +
-               "            // 强转二进制切片，用最底层的 URL.createObjectURL 替换低效的 Base64，榨干浏览器渲染速度\n" +
                "            const blob = new Blob([event.data], { type: 'image/jpeg' });\n" +
                "            const oldUrl = imgView.src;\n" +
                "            imgView.src = URL.createObjectURL(blob);\n" +
                "            \n" +
-               "            // 阅后即焚，瞬间释放内存，防止车机浏览器内存泄漏引发死机\n" +
                "            if (oldUrl && oldUrl.startsWith('blob:')) {\n" +
                "                URL.revokeObjectURL(oldUrl);\n" +
                "            }\n" +
@@ -199,6 +204,9 @@ public class ScreenService extends Service {
         if (mVirtualDisplay != null) mVirtualDisplay.release();
         if (mImageReader != null) mImageReader.close();
         if (mMediaProjection != null) mMediaProjection.stop();
+        if (mBackgroundThread != null) {
+            mBackgroundThread.quitSafely(); // 安全退出异步大后方
+        }
         if (mWsServer != null) { try { mWsServer.stop(); } catch (Exception e) {} }
         if (mHttpServer != null) mHttpServer.stop();
     }
