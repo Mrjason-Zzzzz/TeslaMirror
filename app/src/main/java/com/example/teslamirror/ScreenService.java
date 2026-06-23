@@ -86,7 +86,7 @@ public class ScreenService extends Service {
     private void setupEncoder() throws IOException {
         MediaFormat format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, 3000000); 
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 2000000); // 锁定 2Mbps 高清稳健带宽
         format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); 
         
@@ -98,8 +98,10 @@ public class ScreenService extends Service {
         mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         Surface inputSurface = mEncoder.createInputSurface();
         
+        // 【绝杀修正】将屏幕密度由崩塌的 1 DPI 修正为法定的 160 DPI（标准 mdpi 规格）
+        // 彻底复活麒麟 980 硬件图形渲染管线，迫使其源源不断向 Surface 吐出画面
         mVirtualDisplay = mMediaProjection.createVirtualDisplay("TeslaCapture",
-                1280, 720, 1, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
+                1280, 720, 160, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
                 inputSurface, null, null);
 
         isRunning = true;
@@ -113,6 +115,10 @@ public class ScreenService extends Service {
                     if (outputBufferIndex >= 0) {
                         ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
                         if (outputBuffer != null && bufferInfo.size > 0) {
+                            
+                            outputBuffer.position(bufferInfo.offset);
+                            outputBuffer.limit(bufferInfo.offset + bufferInfo.size);
+                            
                             byte[] outData = new byte[bufferInfo.size];
                             outputBuffer.get(outData);
 
@@ -120,7 +126,11 @@ public class ScreenService extends Service {
                                 mCodecConfig = outData;
                             } else {
                                 if (mWsServer != null) {
-                                    mWsServer.broadcast(outData);
+                                    try {
+                                        mWsServer.broadcast(outData);
+                                    } catch (Exception wsEx) {
+                                        wsEx.printStackTrace();
+                                    }
                                 }
                             }
                         }
@@ -184,7 +194,6 @@ public class ScreenService extends Service {
         }
     }
 
-    // 彻底重构：洗净所有引发 Java 编译器熔断的 JS 模板转义符，改用标准的硬核拼接
     private String getHtmlSource() {
         return "<!DOCTYPE html>\n" +
                "<html lang=\"zh-CN\">\n" +
@@ -255,6 +264,10 @@ public class ScreenService extends Service {
                "        };\n" +
                "        ws.onclose = function(e) {\n" +
                "            console.log('❌ 数据管道已被断开。原因码:', e.code, '原因描述:', e.reason);\n" +
+               "            if (e.code === 1006) {\n" +
+               "                console.log('🔄 检测到 1006 异常断开，激活热重启自愈雷达，2秒后自动刷新网页...');\n" +
+               "                setTimeout(function() { window.location.reload(); }, 2000);\n" +
+               "            }\n" +
                "        };\n" +
                "    </script>\n" +
                "</body>\n" +
