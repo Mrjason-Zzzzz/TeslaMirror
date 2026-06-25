@@ -19,8 +19,8 @@ jobs:
       - name: 下载Apktool
         run: |
           wget https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool
-          wget https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar
-          mv apktool_2.9.3.jar apktool.jar
+          wget https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar
+          mv apktool_2.10.0.jar apktool.jar
           chmod +x apktool apktool.jar
           sudo mv apktool apktool.jar /usr/local/bin/
 
