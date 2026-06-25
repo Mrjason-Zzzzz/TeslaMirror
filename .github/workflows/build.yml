@@ -30,10 +30,10 @@ jobs:
           chmod +x apktool apktool.jar
           sudo mv apktool apktool.jar /usr/local/bin/
 
-      - name: 清理旧签名元数据（核心修复）
+      - name: 清理旧签名元数据（解决证书污染）
         run: |
           rm -rf decompiled/META-INF
-          echo "已清理旧META-INF签名目录，避免证书污染"
+          echo "已清理原APK残留的签名文件，避免校验冲突"
 
       - name: 回编译APK
         run: |
@@ -44,9 +44,9 @@ jobs:
       - name: 下载签名工具
         run: wget https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
-      - name: 签名APK（v2+v3双签名 + 自动对齐）
+      - name: 签名APK（默认v1+v2+v3全签名 + 自动对齐）
         run: |
-          java -jar uber-apk-signer-1.3.0.jar --apks app-unsigned.apk --out ./output --v2Signing --v3Signing
+          java -jar uber-apk-signer-1.3.0.jar --apks app-unsigned.apk --out ./output
           echo "=== 签名完成 ==="
           ls -lh ./output/
 
