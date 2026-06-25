@@ -1,0 +1,33 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "com.proxy.cast"
+        minSdk 21  // 完美契合你上传的 -v21 动画/属性状态集底限
+        targetSdk 33
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false // 暂时关闭混淆，确保打包100%成功
+        }
+    }
+}
+
+dependencies {
+    // 1. 之前完全对齐并经高压验证的 Jetty 9.4 基础组件库
+    implementation 'org.eclipse.jetty:jetty-server:9.4.54.v20240208'
+    implementation 'org.eclipse.jetty:jetty-servlet:9.4.54.v20240208'
+    
+    // 2. 之前解剖的 Mozilla Rhino 动态脚本引擎
+    implementation 'org.mozilla:rhino:1.7.14'
+    
+    // 3. 跨平台终端高色彩渲染穿透库
+    implementation 'org.fusesource.jansi:jansi:2.4.1'
+}
