@@ -3,6 +3,9 @@ name: 反编译APK并提交源码
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   decompile:
     runs-on: ubuntu-latest
