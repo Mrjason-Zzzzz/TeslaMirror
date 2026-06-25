@@ -1,0 +1,34 @@
+name: Android CI/CD Automation Build Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository Source Code
+      uses: actions/checkout@v3
+
+    - name: Set up JDK 11 Runtime Environment
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Grant Execute Permission for Gradle Wrapper
+      run: chmod +x gradlew
+
+    - name: Trigger Production APK Compilation (Assemble Release)
+      run: ./gradlew assembleRelease
+
+    - name: Upload Compiled Production APK Package Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: TeslaCast-Core-Engine
+        path: app/build/outputs/apk/release/app-release-unsigned.apk
