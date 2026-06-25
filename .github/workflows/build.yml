@@ -30,18 +30,30 @@ jobs:
           chmod +x apktool apktool.jar
           sudo mv apktool apktool.jar /usr/local/bin/
 
-      - name: 回编译APK
+      - name: 回编译APK（详细日志）
         run: |
-          apktool b decompiled -o app-unsigned.apk
+          apktool b decompiled -o app-unsigned.apk --verbose
+          echo "=== 回编译完成，文件信息 ==="
           ls -lh app-unsigned.apk
+          file app-unsigned.apk
 
       - name: 下载签名工具
         run: wget https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
 
-      - name: 签名APK
+      - name: 签名APK（v1+v2 双签名）
         run: |
-          java -jar uber-apk-signer-1.3.0.jar --apks app-unsigned.apk --out ./output
+          java -jar uber-apk-signer-1.3.0.jar --apks app-unsigned.apk --out ./output --v1Signing --v2Signing
+          echo "=== 签名完成，文件列表 ==="
           ls -lh ./output/
+
+      - name: 校验APK有效性
+        run: |
+          if unzip -t ./output/*.apk | grep -q "No errors"; then
+            echo "✅ APK 结构校验通过"
+          else
+            echo "❌ APK 结构损坏，安装会失败"
+            exit 1
+          fi
 
       - name: 上传成品APK
         uses: actions/upload-artifact@v4
