@@ -1,0 +1,26 @@
+.class public final Lb5/g;
+.super Lb5/i;
+.source "r8-map-id-26be175c905a7a1c240b4bc8edf96b525db9f88c20bac5d2b4736c849300637f"
+
+
+# direct methods
+.method public constructor <init>(Landroid/content/Context;)V
+    .locals 1
+
+    .line 1
+    invoke-direct {p0, p1}, Lb5/i;-><init>(Landroid/content/Context;)V
+
+    .line 2
+    .line 3
+    .line 4
+    const-string v0, "Context cannot be null"
+
+    .line 5
+    .line 6
+    invoke-static {p1, v0}, Le6/y;->i(Ljava/lang/Object;Ljava/lang/String;)V
+
+    .line 7
+    .line 8
+    .line 9
+    return-void
+.end method

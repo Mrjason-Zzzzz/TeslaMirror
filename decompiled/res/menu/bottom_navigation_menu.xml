@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:icon="@drawable/ic_navigation_stream_24dp" android:enabled="true" android:id="@id/nav_streamFragment" android:title="@string/bottom_menu_stream" app:showAsAction="always" />
+    <item android:icon="@drawable/ic_navigation_settings_24dp" android:enabled="true" android:id="@id/nav_settingsImageFragment" android:title="@string/bottom_menu_settings" app:showAsAction="always" />
+    <item android:enabled="false" android:id="@id/menu_fab" android:title="" app:showAsAction="always" />
+    <item android:icon="@drawable/ic_navigation_about_24dp" android:enabled="true" android:id="@id/nav_aboutFragment" android:title="@string/bottom_menu_about" app:showAsAction="always" />
+    <item android:icon="@drawable/ic_navigation_exit_24dp" android:enabled="true" android:id="@id/nav_exitFragment" android:title="@string/bottom_menu_exit" app:showAsAction="always" />
+</menu>

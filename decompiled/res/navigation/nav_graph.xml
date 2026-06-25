@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation android:id="@id/nav_graph" app:startDestination="@id/nav_streamFragment"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <fragment android:label="StreamFragment" android:name="io.github.blackpill.tesladisplay.ui.fragment.StreamFragment" android:id="@id/nav_streamFragment">
+        <argument android:name="isStreaming" android:defaultValue="false" app:argType="boolean" />
+        <action android:id="@id/action_nav_streamFragment_self" app:destination="@id/nav_streamFragment" />
+    </fragment>
+    <fragment android:label="SettingsImageFragment" android:name="io.github.blackpill.tesladisplay.ui.fragment.SettingsImageFragment" android:id="@id/nav_settingsImageFragment">
+        <action android:id="@id/action_nav_settingsImage_to_stream" app:destination="@id/nav_streamFragment" />
+    </fragment>
+    <fragment android:label="AboutFragment" android:name="io.github.blackpill.tesladisplay.ui.fragment.AboutFragment" android:id="@id/nav_aboutFragment">
+        <action android:id="@id/action_nav_about_to_stream" app:destination="@id/nav_streamFragment" />
+    </fragment>
+    <fragment android:label="ExitFragment" android:name="io.github.blackpill.tesladisplay.ui.fragment.ExitFragment" android:id="@id/nav_exitFragment" />
+</navigation>

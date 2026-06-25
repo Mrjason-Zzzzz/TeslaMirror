@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="fill_parent" android:layout_height="fill_parent" android:fillViewport="true"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <com.google.android.material.tabs.TabLayout android:id="@id/tl_fragment_settings" android:background="@color/colorAccent" android:layout_width="fill_parent" android:layout_height="wrap_content" app:tabBackground="@color/colorAccent" app:tabIndicatorColor="#ffffffff" app:tabMode="scrollable" app:tabTextColor="#ffffffff" style="@style/Widget.MaterialComponents.TabLayout.Colored" />
+    <androidx.viewpager2.widget.ViewPager2 android:id="@id/vp_fragment_settings" android:layout_width="fill_parent" android:layout_height="fill_parent" />
+</LinearLayout>

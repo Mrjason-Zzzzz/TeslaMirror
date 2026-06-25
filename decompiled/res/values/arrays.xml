@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="cast_type_choices">
+        <item>Phone screen</item>
+        <item>Video in this phone</item>
+        <item>Video from internet</item>
+        <item>Forward another phone screen</item>
+    </string-array>
+    <string-array name="pref_policy_options">
+        <item>Balance</item>
+        <item>Latency</item>
+        <item>Quality</item>
+    </string-array>
+</resources>

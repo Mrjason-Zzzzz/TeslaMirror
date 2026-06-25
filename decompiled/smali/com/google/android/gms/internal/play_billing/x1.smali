@@ -1,0 +1,11 @@
+.class public interface abstract Lcom/google/android/gms/internal/play_billing/x1;
+.super Ljava/lang/Object;
+.source "r8-map-id-26be175c905a7a1c240b4bc8edf96b525db9f88c20bac5d2b4736c849300637f"
+
+# interfaces
+.implements Ljava/util/concurrent/Future;
+
+
+# virtual methods
+.method public abstract f(Ljava/lang/Runnable;Ljava/util/concurrent/Executor;)V
+.end method

@@ -1,0 +1,24 @@
+.class public final enum Lp9/e;
+.super Lp9/g;
+.source "r8-map-id-26be175c905a7a1c240b4bc8edf96b525db9f88c20bac5d2b4736c849300637f"
+
+
+# direct methods
+.method public constructor <init>()V
+    .locals 2
+
+    .line 1
+    const-string v0, "LOWER_CASE_WITH_DASHES"
+
+    .line 2
+    .line 3
+    const/4 v1, 0x4
+
+    .line 4
+    invoke-direct {p0, v0, v1}, Ljava/lang/Enum;-><init>(Ljava/lang/String;I)V
+
+    .line 5
+    .line 6
+    .line 7
+    return-void
+.end method

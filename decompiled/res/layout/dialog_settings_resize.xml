@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <TextView android:id="@id/tv_dialog_settings_resize_content" android:layout_width="fill_parent" android:layout_height="wrap_content" android:paddingStart="8.0dip" android:paddingEnd="8.0dip" android:layout_marginStart="16.0dip" android:layout_marginEnd="16.0dip" />
+    <com.google.android.material.textfield.TextInputLayout android:gravity="start|center" android:id="@id/ti_dialog_settings_resize" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginStart="24.0dip" android:layout_marginEnd="24.0dip" app:hintEnabled="false">
+        <com.google.android.material.textfield.TextInputEditText android:id="@id/tiet_dialog_settings_resize" android:layout_width="fill_parent" android:layout_height="wrap_content" android:maxLines="1" android:inputType="number" android:imeOptions="flagNoExtractUi" />
+    </com.google.android.material.textfield.TextInputLayout>
+    <TextView android:textColor="@color/colorAccent" android:id="@id/tv_dialog_settings_resize_result" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginBottom="8.0dip" android:paddingStart="8.0dip" android:paddingEnd="8.0dip" android:layout_marginStart="16.0dip" android:layout_marginEnd="16.0dip" />
+</LinearLayout>

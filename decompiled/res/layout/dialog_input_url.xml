@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <io.github.blackpill.tesladisplay.ui.view.CustomEditText android:gravity="top" android:id="@id/et_input_url" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginLeft="20.0dip" android:layout_marginRight="20.0dip" android:hint="@string/input_url_hint" android:minLines="5" android:drawableRight="@drawable/ic_help_24px" android:inputType="textMultiLine" android:focusedByDefault="true" android:autofillHints="" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
+    <TextView android:textColor="@color/textColorSecondary" android:gravity="top" android:id="@id/tv_submit_status" android:paddingLeft="5.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginLeft="20.0dip" android:layout_marginRight="20.0dip" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@id/et_input_url" />
+</androidx.constraintlayout.widget.ConstraintLayout>
