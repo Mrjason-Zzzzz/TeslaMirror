@@ -20,7 +20,7 @@
     <string name="abc_searchview_description_submit">提交查询</string>
     <string name="abc_searchview_description_voice">语音搜索</string>
     <string name="abc_toolbar_collapse_description">收起</string>
-    <string name="about_fragment_app_name">特斯拉投屏</string>
+    <string name="about_fragment_app_name">爱播放 iPlayer</string>
     <string name="about_fragment_app_version">版本：%1$s</string>
     <string name="about_fragment_developer_name">开发者：Super Ratel</string>
     <string name="about_fragment_discord">加入 Discord 社区</string>
@@ -66,7 +66,7 @@
     <string name="app_intro_image_content_description">引导图</string>
     <string name="app_intro_next_button">下一步</string>
     <string name="app_intro_skip_button">跳过</string>
-    <string name="app_name">TeslaDisplay</string>
+    <string name="app_name">爱播放</string>
     <string name="app_update_activity_dialog_message">更新包已下载完成，是否立即重启应用？</string>
     <string name="app_update_activity_dialog_restart">重启</string>
     <string name="app_update_activity_dialog_title">发现更新</string>
@@ -369,8 +369,8 @@
     <string name="s6">是否允许广告创建日历事件？</string>
     <string name="s7">测试广告</string>
     <string name="search_menu_title">搜索</string>
-    <string name="splash_activity_image_text">特斯拉投屏 启动图</string>
-    <string name="splash_activity_text">特斯拉投屏</string>
+    <string name="splash_activity_image_text">爱播放 启动图</string>
+    <string name="splash_activity_text">爱播放 iPlayer</string>
     <string name="start_enable_hotspot_message">请先开启手机 Wi-Fi 热点，再点击开始按钮。</string>
     <string name="start_notice_checkbox_text">不再提示</string>
     <string name="start_notice_message">若您手机的 Google Play 系统更新日期晚于 2024 年 6 月 1 日，请查看对应解决方案。</string>
