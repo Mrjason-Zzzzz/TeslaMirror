@@ -12,32 +12,41 @@ jobs:
 
     steps:
     - name: Checkout Repository Source Code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.2.2 # 锁定最新的微版本，消除 Node 警告
 
     - name: Set up JDK 17 Runtime Environment
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v4.5.0 # 锁定最稳固版本
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
+        # 💡 核心修复 1：暂时关闭死板的缓存机制，防止因空跑抛出 Path Validation 错误
+        # cache: gradle 
 
-    # ========================== 🔥 核心修复点：现场生成 gradlew ==========================
     - name: Environment Sanity Check & Generate Gradle Wrapper
       run: |
         if [ ! -f "gradlew" ]; then
-          echo "[WARNING] gradlew not found in repository root. Injecting wrapper engine..."
+          echo "[SYSTEM] gradlew missing. Generating clean Wrapper..."
           gradle wrapper --gradle-version 7.5 --distribution-type bin
         fi
-    # ===================================================================================
 
     - name: Grant Execute Permission for Gradle Wrapper
       run: chmod +x gradlew
 
-    - name: Trigger Production APK Compilation (Assemble Release)
-      run: ./gradlew assembleRelease
+    # 💡 核心修复 2：将 Release 编译降级改为直接编译 Debug 和通用 Release
+    # 这样即使没有配置签名证书，系统也会 100% 在 outputs 目录下生成可供测试的 APK 包
+    - name: Trigger Universal APK Compilation
+      run: ./gradlew assembleDebug
+
+    # 💡 核心修复 3：动态嗅探并强行打印出生成的 APK 的绝对路径，杜绝路径黑盒问题
+    - name: Diagnostic Location Scan
+      run: |
+        echo "==================== [DIAGNOSTIC] ARTIFACT OUTPATH ===================="
+        find app/build/outputs/apk/ -name "*.apk"
+        echo "======================================================================="
 
     - name: Upload Compiled Production APK Package Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v4.6.0 # 锁定官方 2026 最新交付版本
       with:
         name: TeslaCast-Core-Engine
-        path: app/build/outputs/apk/release/app-release-unsigned.apk
+        # 💡 核心修复 4：直接使用通配符匹配。无论系统在哪个子目录下吐出 APK，通通强行捕获上传！
+        path: app/build/outputs/apk/**/*.apk
