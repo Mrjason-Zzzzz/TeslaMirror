@@ -20,30 +20,31 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # ========================== 🔥 核心修复：上帝模式硬编码生成全套 Gradle 依赖骨架 ==========================
-    - name: Inject Complete Gradle Structure & Environment
+    # ========================== 🔥 核心修复：上帝特权模式全量注入并强行覆写冲突脚本 ==========================
+    - name: Inject & Standardize Clean Gradle Architecture
       run: |
         echo "[SYSTEM] Initializing clean wrapper engine..."
         gradle wrapper --gradle-version 7.5 --distribution-type bin
         
-        # 强制修正 gradle-wrapper.properties
-        mkdir -p gradle/wrapper
-        echo "distributionBase=GRADLE_USER_HOME" > gradle/wrapper/gradle-wrapper.properties
-        echo "distributionPath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
-        echo "distributionUrl=https\://services.gradle.org/distributions/gradle-7.5-bin.zip" >> gradle/wrapper/gradle-wrapper.properties
-        echo "zipStoreBase=GRADLE_USER_HOME" >> gradle/wrapper/gradle-wrapper.properties
-        echo "zipStorePath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
+        # 1. 强行修正依赖声明，让 settings.gradle 成为最高且唯一的仓库管理中心
+        echo "pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }" > settings.gradle
+        echo "dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS); repositories { google(); mavenCentral() } }" >> settings.gradle
+        echo "rootProject.name = 'TeslaCastCore'" >> settings.gradle
+        echo "include ':app'" >> settings.gradle
         
-        # 强行对齐 local.properties 拦截 Android SDK 路径
+        # 2. 彻底清洗根 build.gradle，剥离冲突的 repositories 声明，全面升级 Android 编译内核
+        echo "buildscript { repositories { google(); mavenCentral() }; dependencies { classpath 'com.android.tools.build:gradle:7.4.2' } }" > build.gradle
+        echo "task clean(type: Delete) { delete rootProject.buildDir }" >> build.gradle
+        
+        # 3. 拦截并硬挂钩 Android SDK 物理路径
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
         
-        echo "[SUCCESS] Core Build Engine Completely Synced."
+        echo "[SUCCESS] Gradle Strategy Conflict Resolved."
     # ===================================================================================================
 
     - name: Grant Execute Permission for Gradle Wrapper
       run: chmod +x gradlew
 
-    # 💡 核心修复 2：不再依赖外部黑盒，直接用 gradle wrapper 精准触发本地构建
     - name: Trigger Universal APK Compilation via Local Wrapper
       run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
 
