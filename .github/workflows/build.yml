@@ -14,70 +14,49 @@ jobs:
     - name: Checkout Repository Source Code
       uses: actions/checkout@v4.2.2
 
-    - name: Set up JDK 17 Runtime Environment
+    - name: Set up JDK 11 Runtime Environment
       uses: actions/setup-java@v4.5.0
       with:
-        java-version: '17'
+        java-version: '11' # 锁定最契合你原始项目的 Java 11 引擎
         distribution: 'temurin'
 
-    # ========================== 🔥 绝对控制：全清洗硬编码，对齐现代 Gradle 严格仓库规范 ==========================
-    - name: Purge and Reconstruct Clean Gradle Core
+    # ========================== 🔥 核心修复：强制清洗打架的配置，不碰核心逻辑 ==========================
+    - name: Restructure Build Engineering Without Touching Code
       run: |
-        echo "[SYSTEM] Injecting 100% compliant modern project wrapper..."
+        echo "[SYSTEM] Cleaning up strict repository conflicts..."
+        
+        # 1. 强制生成标准 7.5 版本的打包封装器，直接废掉虚拟机系统的 9.6 版本
         gradle wrapper --gradle-version 7.5 --distribution-type bin
         
-        # 1. 强行覆写 settings.gradle —— 采用纯正的 2026 隔离式集中管理，阻断打架
+        # 2. 强行将 settings.gradle 降维清洗，允许 build.gradle 的传统写法，不让它们打架
         cat << 'EOF' > settings.gradle
-        pluginManagement {
-            repositories {
-                google()
-                mavenCentral()
-                gradlePluginPortal()
-            }
-        }
         dependencyResolutionManagement {
-            // 强行命令引擎：必须、且只能使用 settings 里的仓库源！
-            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            // 彻底关闭严格检查模式！允许老项目的仓库声明，绝不报错熔断
+            repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
             repositories {
                 google()
                 mavenCentral()
             }
         }
-        rootProject.name = 'TeslaCastCore'
+        rootProject.name = 'TeslaMirror'
         include ':app'
         EOF
         
-        # 2. 强行清洗根目录 build.gradle —— 将所有多余的 allprojects 仓库声明全部剔除，只留纯净的构建依赖
-        cat << 'EOF' > build.gradle
-        buildscript {
-            repositories {
-                google()
-                mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:7.4.2'
-            }
-        }
-        task clean(type: Delete) {
-            delete rootProject.buildDir
-        }
-        EOF
-        
-        # 3. 注入系统环境变量，绑定全局本地 Android SDK 物理通路
+        # 3. 拦截并绑定物理 SDK 通路
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
         
-        echo "[SUCCESS] Project structural engineering completely synchronized."
+        echo "[SUCCESS] Engineering environment successfully downgraded and balanced."
     # ===================================================================================================
 
     - name: Grant Execute Permission for Gradle Wrapper
       run: chmod +x gradlew
 
-    - name: Trigger Universal APK Compilation via Local Wrapper
-      # 💡 强制使用我们自己现场生成的 ./gradlew (7.5 内核) 执行编译，绝不借用系统霸道的 9.5 容器
+    - name: Execute Unaltered Core Compilation
+      # 强行调用我们自己降级后的 ./gradlew，使用 --no-daemon 彻底隔离高版本干扰
       run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
 
-    - name: Upload Compiled Production APK Package Artifacts
+    - name: Upload Final Unaltered Functional APK
       uses: actions/upload-artifact@v4.6.0
       with:
-        name: TeslaCast-Core-Engine
+        name: TeslaCast-Primary-Unaltered-Engine
         path: app/build/outputs/apk/debug/*.apk
