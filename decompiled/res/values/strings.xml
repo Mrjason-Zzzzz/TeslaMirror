@@ -249,7 +249,7 @@
     <string name="offline_dialog_image_description">图标</string>
     <string name="offline_dialog_text">感谢您的使用。\n网络恢复后将继续提供服务。</string>
     <string name="offline_notification_title">网络已恢复，继续投屏</string>
-    <string name="offline_notification_title_with_advertiser">网络已恢复，继续查看 %s</string>
+    <string name="offline_notification_title_with_advertiser" formatted="false">网络已恢复，继续查看 %s</string>
     <string name="offline_opt_in_confirm">确定</string>
     <string name="offline_opt_in_decline">不用了，谢谢</string>
     <string name="offline_opt_in_message">我们将向您发送包含广告商网站链接的通知。</string>
