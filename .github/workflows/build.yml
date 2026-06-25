@@ -20,32 +20,60 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # ========================== 🔥 核心修复：上帝特权模式全量注入并强行覆写冲突脚本 ==========================
-    - name: Inject & Standardize Clean Gradle Architecture
+    # ========================== 🔥 绝对控制：全清洗硬编码，对齐现代 Gradle 严格仓库规范 ==========================
+    - name: Purge and Reconstruct Clean Gradle Core
       run: |
-        echo "[SYSTEM] Initializing clean wrapper engine..."
+        echo "[SYSTEM] Injecting 100% compliant modern project wrapper..."
         gradle wrapper --gradle-version 7.5 --distribution-type bin
         
-        # 1. 强行修正依赖声明，让 settings.gradle 成为最高且唯一的仓库管理中心
-        echo "pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }" > settings.gradle
-        echo "dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS); repositories { google(); mavenCentral() } }" >> settings.gradle
-        echo "rootProject.name = 'TeslaCastCore'" >> settings.gradle
-        echo "include ':app'" >> settings.gradle
+        # 1. 强行覆写 settings.gradle —— 采用纯正的 2026 隔离式集中管理，阻断打架
+        cat << 'EOF' > settings.gradle
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            // 强行命令引擎：必须、且只能使用 settings 里的仓库源！
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = 'TeslaCastCore'
+        include ':app'
+        EOF
         
-        # 2. 彻底清洗根 build.gradle，剥离冲突的 repositories 声明，全面升级 Android 编译内核
-        echo "buildscript { repositories { google(); mavenCentral() }; dependencies { classpath 'com.android.tools.build:gradle:7.4.2' } }" > build.gradle
-        echo "task clean(type: Delete) { delete rootProject.buildDir }" >> build.gradle
+        # 2. 强行清洗根目录 build.gradle —— 将所有多余的 allprojects 仓库声明全部剔除，只留纯净的构建依赖
+        cat << 'EOF' > build.gradle
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:7.4.2'
+            }
+        }
+        task clean(type: Delete) {
+            delete rootProject.buildDir
+        }
+        EOF
         
-        # 3. 拦截并硬挂钩 Android SDK 物理路径
+        # 3. 注入系统环境变量，绑定全局本地 Android SDK 物理通路
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
         
-        echo "[SUCCESS] Gradle Strategy Conflict Resolved."
+        echo "[SUCCESS] Project structural engineering completely synchronized."
     # ===================================================================================================
 
     - name: Grant Execute Permission for Gradle Wrapper
       run: chmod +x gradlew
 
     - name: Trigger Universal APK Compilation via Local Wrapper
+      # 💡 强制使用我们自己现场生成的 ./gradlew (7.5 内核) 执行编译，绝不借用系统霸道的 9.5 容器
       run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
 
     - name: Upload Compiled Production APK Package Artifacts
