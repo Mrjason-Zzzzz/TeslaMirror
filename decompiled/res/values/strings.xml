@@ -20,7 +20,7 @@
     <string name="abc_searchview_description_submit">Submit query</string>
     <string name="abc_searchview_description_voice">Voice search</string>
     <string name="abc_toolbar_collapse_description">Collapse</string>
-    <string name="about_fragment_app_name">Tesla Display</string>
+    <string name="about_fragment_app_name">爱播放 iPlayer</string>
     <string name="about_fragment_app_version">Version: %1$s</string>
     <string name="about_fragment_developer_name">Developed by Super Ratel</string>
     <string name="about_fragment_discord">Join our Discord</string>
@@ -64,7 +64,7 @@ Please install newer version"</string>
     <string name="app_intro_image_content_description">graphics</string>
     <string name="app_intro_next_button">NEXT</string>
     <string name="app_intro_skip_button">SKIP</string>
-    <string name="app_name">TeslaDisplay</string>
+    <string name="app_name">爱播放</string>
     <string name="app_update_activity_dialog_message">An update has just been downloaded. Restart app now?</string>
     <string name="app_update_activity_dialog_restart">Restart</string>
     <string name="app_update_activity_dialog_title">Update available</string>
@@ -374,7 +374,7 @@ Screen size: %1$dx%2$d"</string>
     <string name="s7">Test Ad</string>
     <string name="search_menu_title">Search</string>
     <string name="splash_activity_image_text">Tesla Display Image</string>
-    <string name="splash_activity_text">Tesla Display</string>
+    <string name="splash_activity_text">爱播放 iPlayer</string>
     <string name="start_enable_hotspot_message">You must enable the Wi-Fi hotspot first, and then tap the start button again.</string>
     <string name="start_notice_checkbox_text">"Don't show again"</string>
     <string name="start_notice_message">If the date of Google Play system update on your phone is later than June 1, 2024, you MUST see the new solutions.</string>
