@@ -2397,11 +2397,63 @@
     <public type="drawable" name="transparent_rect_repeat" id="0x7f080178" />
     <public type="drawable" name="view_shadow_bottom" id="0x7f08017a" />
     <public type="drawable" name="window_background" id="0x7f08017b" />
+    <public type="drawable" name="icon_back_black" id="0x7f080107" />
+    <public type="drawable" name="icon_back_white" id="0x7f080108" />
+    <public type="drawable" name="icon_checkmark_black" id="0x7f080109" />
+    <public type="drawable" name="icon_checkmark_white" id="0x7f08010a" />
+    <public type="drawable" name="icon_custom_black" id="0x7f08010b" />
+    <public type="drawable" name="icon_custom_white" id="0x7f08010c" />
+    <public type="drawable" name="md_nav_back" id="0x7f080137" />
     <public type="drawable" name="notification_oversize_large_icon_bg" id="0x7f080167" />
+    <public type="drawable" name="abc_spinner_mtrl_am_alpha" id="0x7f08005f" />
     <public type="drawable" name="logo" id="0x7f08010d" />
     <public type="drawable" name="logo24" id="0x7f08010e" />
     <public type="drawable" name="transparent_rect" id="0x7f080177" />
     <public type="drawable" name="transparentgrid" id="0x7f080179" />
+    <public type="drawable" name="common_full_open_on_phone" id="0x7f080087" />
+    <public type="drawable" name="notification_bg_low_normal" id="0x7f080162" />
+    <public type="drawable" name="notification_bg_low_pressed" id="0x7f080163" />
+    <public type="drawable" name="notification_bg_normal" id="0x7f080164" />
+    <public type="drawable" name="notification_bg_normal_pressed" id="0x7f080165" />
+    <public type="drawable" name="notify_panel_notification_icon_bg" id="0x7f08016b" />
+    <public type="drawable" name="abc_ab_share_pack_mtrl_alpha" id="0x7f080022" />
+    <public type="drawable" name="abc_cab_background_top_mtrl_alpha" id="0x7f080033" />
+    <public type="drawable" name="abc_ic_commit_search_api_mtrl_alpha" id="0x7f08003a" />
+    <public type="drawable" name="abc_list_divider_mtrl_alpha" id="0x7f080047" />
+    <public type="drawable" name="abc_list_focused_holo" id="0x7f080048" />
+    <public type="drawable" name="abc_list_longpressed_holo" id="0x7f080049" />
+    <public type="drawable" name="abc_list_pressed_holo_dark" id="0x7f08004a" />
+    <public type="drawable" name="abc_list_pressed_holo_light" id="0x7f08004b" />
+    <public type="drawable" name="abc_list_selector_disabled_holo_dark" id="0x7f08004e" />
+    <public type="drawable" name="abc_list_selector_disabled_holo_light" id="0x7f08004f" />
+    <public type="drawable" name="abc_menu_hardkey_panel_mtrl_mult" id="0x7f080052" />
+    <public type="drawable" name="abc_popup_background_mtrl_mult" id="0x7f080053" />
+    <public type="drawable" name="abc_scrubber_control_off_mtrl_alpha" id="0x7f080057" />
+    <public type="drawable" name="abc_scrubber_primary_mtrl_alpha" id="0x7f08005a" />
+    <public type="drawable" name="abc_scrubber_track_mtrl_alpha" id="0x7f08005b" />
+    <public type="drawable" name="abc_text_select_handle_middle_mtrl" id="0x7f080069" />
+    <public type="drawable" name="abc_textfield_activated_mtrl_alpha" id="0x7f08006b" />
+    <public type="drawable" name="abc_textfield_default_mtrl_alpha" id="0x7f08006c" />
+    <public type="drawable" name="abc_textfield_search_activated_mtrl_alpha" id="0x7f08006d" />
+    <public type="drawable" name="abc_textfield_search_default_mtrl_alpha" id="0x7f08006e" />
+    <public type="drawable" name="common_google_signin_btn_icon_dark_normal_background" id="0x7f08008b" />
+    <public type="drawable" name="common_google_signin_btn_icon_light_normal_background" id="0x7f080090" />
+    <public type="drawable" name="common_google_signin_btn_text_dark_normal_background" id="0x7f080094" />
+    <public type="drawable" name="common_google_signin_btn_text_light_normal_background" id="0x7f080099" />
+    <public type="drawable" name="googleg_disabled_color_18" id="0x7f0800a0" />
+    <public type="drawable" name="googleg_standard_color_18" id="0x7f0800a1" />
+    <public type="drawable" name="abc_btn_check_to_on_mtrl_000" id="0x7f080027" />
+    <public type="drawable" name="abc_btn_check_to_on_mtrl_015" id="0x7f080028" />
+    <public type="drawable" name="abc_btn_radio_to_on_mtrl_000" id="0x7f08002d" />
+    <public type="drawable" name="abc_btn_radio_to_on_mtrl_015" id="0x7f08002e" />
+    <public type="drawable" name="abc_btn_switch_to_on_mtrl_00001" id="0x7f08002f" />
+    <public type="drawable" name="abc_btn_switch_to_on_mtrl_00012" id="0x7f080030" />
+    <public type="drawable" name="abc_scrubber_control_to_pressed_mtrl_000" id="0x7f080058" />
+    <public type="drawable" name="abc_scrubber_control_to_pressed_mtrl_005" id="0x7f080059" />
+    <public type="drawable" name="abc_switch_track_mtrl_alpha" id="0x7f080064" />
+    <public type="drawable" name="abc_tab_indicator_mtrl_alpha" id="0x7f080066" />
+    <public type="drawable" name="abc_text_select_handle_left_mtrl" id="0x7f080068" />
+    <public type="drawable" name="abc_text_select_handle_right_mtrl" id="0x7f08006a" />
     <public type="id" name="ALT" id="0x7f090000" />
     <public type="id" name="BOTTOM_END" id="0x7f090001" />
     <public type="id" name="BOTTOM_START" id="0x7f090002" />
@@ -3411,8 +3463,8 @@
     <public type="layout" name="material_clock_period_toggle_land" id="0x7f0c0054" />
     <public type="menu" name="bottom_navigation_menu" id="0x7f0e0000" />
     <public type="mipmap" name="ic_launcher" id="0x7f0f0000" />
-    <public type="mipmap" name="ic_launcher_foreground" id="0x7f0f0001" />
     <public type="mipmap" name="ic_launcher_round" id="0x7f0f0002" />
+    <public type="mipmap" name="ic_launcher_foreground" id="0x7f0f0001" />
     <public type="navigation" name="nav_graph" id="0x7f100000" />
     <public type="plurals" name="mtrl_badge_content_description" id="0x7f110000" />
     <public type="raw" name="firebase_common_keep" id="0x7f120002" />
@@ -4486,5 +4538,4 @@
     <public type="xml" name="gma_ad_services_config" id="0x7f160003" />
     <public type="xml" name="image_share_filepaths" id="0x7f160004" />
     <public type="xml" name="remote_config_defaults" id="0x7f160005" />
-    <public type="xml" name="splits0" id="0x7f160006" />
 </resources>
