@@ -1,7 +1,43 @@
-name: Build APK
+name: 云端回编译+自动签名
 on: [push, workflow_dispatch]
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: 配置Java 17环境
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 安装Apktool 2.10.0
+        run: |
+          wget https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool
+          wget https://github.com/iBotPeaches/Apktool/releases/download/v2.10.0/apktool_2.10.0.jar
+          mv apktool_2.10.0.jar apktool.jar
+          chmod +x apktool apktool.jar
+          sudo mv apktool apktool.jar /usr/local/bin/
+
+      - name: 回编译生成未签名APK
+        run: apktool b decompiled -o app-unsigned.apk
+
+      - name: 下载签名工具
+        run: wget https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+
+      - name: 资源对齐 + v2/v3双签名
+        run: |
+          java -jar uber-apk-signer-1.3.0.jar --apks app-unsigned.apk --out ./output
+          ls -lh ./output/
+
+      - name: APK结构完整性校验
+        run: unzip -t ./output/*.apk
+
+      - name: 上传成品安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: 爱播放iPlayer成品APK
+          path: ./output/*.apk
